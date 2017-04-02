@@ -22,116 +22,160 @@ namespace CountSlippedWafers
 
         static void Main(string[] args)
         {
-            #region allocate arrays:
+            #region allocate arrays, initialize variables:
 
             int width = 4096;
             int height = 8192;
             byte[] inputArray;
-            byte[] array1 = new byte[height * width /2];
-            byte[] array2 = new byte[height * width /2];
+            byte[] array1 = new byte[height * width / 2];
+            byte[] array2 = new byte[height * width / 2];
 
-            Image<Gray, Byte> image1 = new Image<Gray, Byte>(width, height/2);
-            Image<Gray, Byte> image2 = new Image<Gray, Byte>(width, height/2);
+            Image<Gray, Byte> image1 = new Image<Gray, Byte>(width, height / 2);
+            Image<Gray, Byte> image2 = new Image<Gray, Byte>(width, height / 2);
 
             Image<Gray, Byte> WaferMask;
 
-            PointF[] pointfs;
-            PointF[] Allpointfs = null;
+            PointF[] contourPointfs;
+            PointF[] AllContourPointfs = null;
 
             double[,] edgeVectors;
 
-            
+            string inputFolder = @"f:\_WORK\_SEMILAB\_SW_PROJECTS\CountSlippedWafers_Images";
 
             #endregion
 
-            using (storage = new MemStorage())
+            #region output file handling:
+
+            string[] fileList = Directory.GetFiles(inputFolder);
+            int[] resuList = new int[fileList.Length];
+
+            if (File.Exists("Slippedwafers.csv"))
+                File.Delete("Slippedwafers.csv");
+
+            using (TextWriter tw = new StreamWriter("Slippedwafers.csv"))
+            {
+                tw.WriteLine("FileName;X;Y");
+            }
+
+            #endregion
+
+            for (int m = 0; m < fileList.Length; m++)
             {
 
-
-                #region read in image:
-
-                inputArray = File.ReadAllBytes(@"f:\_WORK\_SEMILAB\_SW_PROJECTS\CountSlippedWafers_Images\1007_20170318_080046_NOK.raw");
-
-
-                for (int j = 0; j < height / 2; j++)
+                using (storage = new MemStorage())
                 {
-                    int rowWidth1 = j * 2 * width * 2;
-                    int rowWidth2 = (j * 2 + 1) * width * 2;
 
-                    for (int i = 0; i < width; i++)
+                    #region read in image:
+                    
+                    inputArray = File.ReadAllBytes(fileList[m]);
+                    AllContourPointfs = null;
+
+                    for (int j = 0; j < height / 2; j++)
                     {
-                        int columnWidth = 2 * i;
+                        int rowWidth1 = j * 2 * width * 2;
+                        int rowWidth2 = (j * 2 + 1) * width * 2;
 
-                        array1[j * width + i] = (byte)(inputArray[rowWidth1 + columnWidth + 1] * 16); // + inputArray[rowWidth1 + columnWidth]);                    //its like div16 -> only the higher value bit is kept
-                        array2[j * width + i] = (byte)(inputArray[rowWidth2 + columnWidth + 1] * 16); // + inputArray[rowWidth2 + columnWidth];
+                        for (int i = 0; i < width; i++)
+                        {
+                            int columnWidth = 2 * i;
+
+                            array1[j * width + i] = (byte)(inputArray[rowWidth1 + columnWidth + 1] * 16); // + inputArray[rowWidth1 + columnWidth]);                    //its like div16 -> only the higher value byte is kept, the lower byte is skipped
+                            array2[j * width + i] = (byte)(inputArray[rowWidth2 + columnWidth + 1] * 16); // + inputArray[rowWidth2 + columnWidth];
+                        }
                     }
-                }
 
-                image1.Bytes = array1;
-                image1.Bytes = array2;
+                    image1.Bytes = array1;
+                    image1.Bytes = array2;
+
+                    #endregion
 
 
-                #endregion
+                    #region image processing:
 
-                //int counter = 0;
+                    //int counter = 0;
+                    WaferMask = image1.ThresholdBinary(new Gray(50), new Gray(255)).Convert<Gray, byte>();
 
-                WaferMask = image1.ThresholdBinary(new Gray(50), new Gray(255)).Convert<Gray, byte>();
+                    for (Contour<Point> contours = WaferMask.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_NONE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_CCOMP, storage); contours != null; contours = contours.HNext)
+                    {
+                        Contour<Point> currentContour = new Contour<Point>(storage);
 
-                //double cannyThresholdLinking = 150.0;
-                //Image<Gray, Byte> cannyEdges = image1.Canny(200f, cannyThresholdLinking);
+                        currentContour = contours;
+                        image1.DrawPolyline(currentContour.ToArray(), true, new Gray(192), 3);
 
-                for (Contour<Point> contours = WaferMask.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_NONE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_CCOMP, storage); contours != null; contours = contours.HNext)
-                {
-                    Contour<Point> currentContour = new Contour<Point>(storage);
+                        contourPointfs = Array.ConvertAll(contours.ToArray(), input => new PointF(input.X, input.Y));
 
-                    currentContour = contours;
-                    image1.DrawPolyline(currentContour.ToArray(), true, new Gray(192), 3);
+                        if (AllContourPointfs == null || contourPointfs.Length > AllContourPointfs.Length)
+                            AllContourPointfs = contourPointfs;
 
-                    pointfs = Array.ConvertAll(contours.ToArray(), input => new PointF(input.X, input.Y));
+                        //string filename = $"{ Path.GetFileName(fileList[m])}_out.txt" + counter;
+                        //using (TextWriter tw = new StreamWriter(filename))
+                        //{
+                        //    for (int l = 0; l < contourPointfs.Length; l++)
+                        //        tw.WriteLine($"{l};{contourPointfs[l].X};{contourPointfs[l].Y}");
+                        //}
+                        //counter++;
+                    }
 
-                    if (Allpointfs == null || pointfs.Length > Allpointfs.Length)
-                        Allpointfs = pointfs;
+                    edgeVectors = new double[AllContourPointfs.Length - 1, 4];
 
-                    //string filename = "out_" + counter;
-                    //using (TextWriter tw = new StreamWriter(filename))
+                    for (int i = 1; i < AllContourPointfs.Length - 2; i++)
+                    {
+                        edgeVectors[i, 0] = AllContourPointfs[i + 1].X - AllContourPointfs[i].X;
+                        edgeVectors[i, 1] = AllContourPointfs[i + 1].Y - AllContourPointfs[i].Y;
+                        edgeVectors[i, 2] = Math.Atan2(edgeVectors[i, 1], edgeVectors[i, 0]) * 180 / Math.PI;
+                        edgeVectors[i, 3] = edgeVectors[i, 2] + edgeVectors[i - 1, 2];
+                    }
+
+                    //using (TextWriter tw = new StreamWriter($"{Path.GetFileName(fileList[m])}_edgeVectors.txt"))
                     //{
-                    //    for (int l = 0; l < pointfs.Length; l++)
-                    //    {
-                    //        tw.WriteLine($"{l};{pointfs[l].X};{pointfs[l].Y}");
-                    //    }
-
+                    //    for (int i = 0; i < AllContourPointfs.Length - 2; i++)
+                    //        tw.WriteLine($"{edgeVectors[i, 0]} ; {edgeVectors[i, 1]} ; {edgeVectors[i, 2]} ; {edgeVectors[i, 3]}");
                     //}
-                    //counter++;
+
+                    resuList[m] = EvalVectors(edgeVectors);
+
+                    #endregion
+
+                    //ImageViewer.Show(image1, "Image1");
+
+                    #region save result to file:
+                    float X_;
+                    float Y_;
+                    using (TextWriter tw = new StreamWriter("Slippedwafers.csv", true))
+                    {
+                        X_ = 0;
+                        Y_ = 0;
+
+                        if (resuList[m] != 0)
+                        {
+                            X_ = AllContourPointfs[resuList[m]].X;
+                            Y_ = AllContourPointfs[resuList[m]].Y;
+
+                        }
+
+                        tw.WriteLine($"{fileList[m]};{X_};{Y_}");
+                    }
+
+                    #endregion
+
+                    Console.WriteLine($"{fileList[m]}");
+
                 }
-
-                edgeVectors = new double[Allpointfs.Length - 1, 4];
-
-                for (int i = 1; i < Allpointfs.Length - 2; i++)
-                {
-                    edgeVectors[i, 0] = Allpointfs[i + 1].X - Allpointfs[i].X;
-                    edgeVectors[i, 1] = Allpointfs[i + 1].Y - Allpointfs[i].Y;
-                    edgeVectors[i, 2] = Math.Atan2(edgeVectors[i, 1], edgeVectors[i, 0]) * 180 / Math.PI;
-                    edgeVectors[i, 3] = edgeVectors[i, 2] + edgeVectors[i-1, 2];
-                }
-
-                //using (TextWriter tw = new StreamWriter("edgeVectors.txt"))
-                //{
-                //    for (int i = 0; i < Allpointfs.Length - 2; i++)
-                //        tw.WriteLine($"{edgeVectors[i, 0]} ; {edgeVectors[i, 1]} ; {edgeVectors[i, 2]} ; {edgeVectors[i, 3]}");
-                //}
-
-                bool resu = EvalVEctors(edgeVectors);
-
-
-                ImageViewer.Show(image1, "Image1");
-
             }
+
+            Console.WriteLine(Environment.NewLine);
+            Console.WriteLine($"{fileList.Length} images processed. {Environment.NewLine}{resuList.Where((p) => p != 0).Count()} slippedwafers found from {fileList.Length} wafer images.");            
 
             Console.ReadKey();
         }
 
 
-        private static bool EvalVEctors(double[,] edgeVectors)
+        /// <summary>
+        /// Defines conditions for the vertical edges of the slipped wafers
+        /// </summary>
+        /// <param name="edgeVectors">array of edge points</param>
+        /// <returns></returns>
+        private static int EvalVectors(double[,] edgeVectors)
         {
             int counterHoriz = 0;
             int counterVertical = 0;
@@ -157,14 +201,11 @@ namespace CountSlippedWafers
                 if (edgeVectors[i, 1] == 1 || edgeVectors[i, 1] == -1)
                     counterVertical++;
 
-
-
                 if (savedVertical >= _verticalThreshold && counterHoriz >= _horizontalThreshold)
-                    return true;
-
+                    return i;
             }
 
-            return false;
+            return 0;       // 0 is the "not found", because the result cannot be 0
         }
 
     }
