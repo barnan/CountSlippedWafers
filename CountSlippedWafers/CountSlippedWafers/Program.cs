@@ -17,7 +17,8 @@ namespace CountSlippedWafers
     {
         private static MemStorage storage;
         static int _verticalThreshold = 10;
-        static int _horizontalThreshold = 5;
+        static int _horizontalThreshold = 8;
+        static int _chamferThreshold = 5;
 
 
         static void Main(string[] args)
@@ -40,7 +41,7 @@ namespace CountSlippedWafers
 
             double[,] edgeVectors;
 
-            string inputFolder = @"f:\_WORK\_SEMILAB\_SW_PROJECTS\CountSlippedWafers_Images";
+            string inputFolder = @"c:\MCI_szetcsuszott_kep\good";
 
             #endregion
 
@@ -93,7 +94,7 @@ namespace CountSlippedWafers
                     #region image processing:
 
                     //int counter = 0;
-                    WaferMask = image1.ThresholdBinary(new Gray(50), new Gray(255)).Convert<Gray, byte>();
+                    WaferMask = image1.ThresholdBinary(new Gray(30), new Gray(255)).Convert<Gray, byte>();
 
                     for (Contour<Point> contours = WaferMask.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_NONE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_CCOMP, storage); contours != null; contours = contours.HNext)
                     {
@@ -120,8 +121,8 @@ namespace CountSlippedWafers
 
                     for (int i = 1; i < AllContourPointfs.Length - 2; i++)
                     {
-                        edgeVectors[i, 0] = AllContourPointfs[i + 1].X - AllContourPointfs[i].X;
-                        edgeVectors[i, 1] = AllContourPointfs[i + 1].Y - AllContourPointfs[i].Y;
+                        edgeVectors[i, 0] = (int)(AllContourPointfs[i + 1].X - AllContourPointfs[i].X);
+                        edgeVectors[i, 1] = (int)(AllContourPointfs[i + 1].Y - AllContourPointfs[i].Y);
                         edgeVectors[i, 2] = Math.Atan2(edgeVectors[i, 1], edgeVectors[i, 0]) * 180 / Math.PI;
                         edgeVectors[i, 3] = edgeVectors[i, 2] + edgeVectors[i - 1, 2];
                     }
@@ -129,7 +130,7 @@ namespace CountSlippedWafers
                     //using (TextWriter tw = new StreamWriter($"{Path.GetFileName(fileList[m])}_edgeVectors.txt"))
                     //{
                     //    for (int i = 0; i < AllContourPointfs.Length - 2; i++)
-                    //        tw.WriteLine($"{edgeVectors[i, 0]} ; {edgeVectors[i, 1]} ; {edgeVectors[i, 2]} ; {edgeVectors[i, 3]}");
+                    //        tw.WriteLine($"{AllContourPointfs[i].X};{AllContourPointfs[i].Y};{edgeVectors[i, 0]};{edgeVectors[i, 1]};{edgeVectors[i, 2]};{edgeVectors[i, 3]}");
                     //}
 
                     resuList[m] = EvalVectors(edgeVectors);
@@ -158,7 +159,7 @@ namespace CountSlippedWafers
 
                     #endregion
 
-                    Console.WriteLine($"{fileList[m]}");
+                    Console.WriteLine("{0} {1}", fileList[m], (resuList[m] == 0) ? "false" : "true");
 
                 }
             }
@@ -180,12 +181,31 @@ namespace CountSlippedWafers
             int counterHoriz = 0;
             int counterVertical = 0;
             int savedVertical = 0;
-            for (int i = 1; i < edgeVectors.Length/4 - 2; i++)
-            {                
-                if (edgeVectors[i, 0] != edgeVectors[i - 1, 0])
-                    counterHoriz = 0;
+            double chamferCounter = 0;
 
-                if ((edgeVectors[i, 0] == 1 || edgeVectors[i, 0] == -1) && edgeVectors[i, 1] == 0)
+            for (int i = 1; i < edgeVectors.Length/4 - 2; i++)
+            {
+                // chamfer region:
+                if (edgeVectors[i, 2] == 45 || edgeVectors[i, 2] == 135 || edgeVectors[i, 2] == -45 || edgeVectors[i, 2] == -135)
+                    chamferCounter++;
+                else
+                    chamferCounter = 0;
+
+                if (chamferCounter > _chamferThreshold)
+                {
+                    counterVertical = 0;
+                    counterHoriz = 0;
+                    savedVertical = 0;
+                }
+
+                // horizontal region
+                if (edgeVectors[i, 0] != edgeVectors[i - 1, 0])
+                {
+                    counterHoriz = 0;
+                    savedVertical = 0;
+                }
+
+                if ( (edgeVectors[i, 0] == 1 || edgeVectors[i, 0] == -1) && edgeVectors[i, 1] == 0)
                 {
                     if (counterHoriz == 0)
                         savedVertical = counterVertical;
@@ -195,11 +215,17 @@ namespace CountSlippedWafers
                 else
                     counterHoriz = 0;
 
-                if (edgeVectors[i, 1] != edgeVectors[i - 1, 1])
-                    counterVertical = 0;
 
-                if (edgeVectors[i, 1] == 1 || edgeVectors[i, 1] == -1)
+                // vertical region:
+                if (edgeVectors[i, 1] != edgeVectors[i - 1, 1])
+                {
+                    counterVertical = 0;
+                }
+
+                if ((edgeVectors[i, 1] == 1 || edgeVectors[i, 1] == -1) )
+                {
                     counterVertical++;
+                }
 
                 if (savedVertical >= _verticalThreshold && counterHoriz >= _horizontalThreshold)
                     return i;
