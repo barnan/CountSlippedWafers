@@ -46,6 +46,9 @@ namespace CountSlippedWafers
 
             string inputFolder = @"e:\line20 crack";
 
+            // define convolution kernels:
+            float[,] k = new float[,]
+
             #endregion
 
             #region output file handling:
