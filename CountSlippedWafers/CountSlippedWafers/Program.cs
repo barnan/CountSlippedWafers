@@ -19,6 +19,9 @@ namespace CountSlippedWafers
         static int _verticalThreshold = 10;
         static int _horizontalThreshold = 8;
         static int _chamferThreshold = 5;
+        static int _leftEdgeThreshold = 300;
+        static int _rightEdgeThreshold = 3800;
+
 
 
         static void Main(string[] args)
@@ -41,7 +44,7 @@ namespace CountSlippedWafers
 
             double[,] edgeVectors;
 
-            string inputFolder = @"c:\MCI_szetcsuszott_kep\good";
+            string inputFolder = @"e:\line20 crack";
 
             #endregion
 
@@ -133,7 +136,8 @@ namespace CountSlippedWafers
                     //        tw.WriteLine($"{AllContourPointfs[i].X};{AllContourPointfs[i].Y};{edgeVectors[i, 0]};{edgeVectors[i, 1]};{edgeVectors[i, 2]};{edgeVectors[i, 3]}");
                     //}
 
-                    resuList[m] = EvalVectors(edgeVectors);
+                    
+                    resuList[m] = EvalVectors(edgeVectors, AllContourPointfs);
 
                     #endregion
 
@@ -154,12 +158,12 @@ namespace CountSlippedWafers
 
                         }
 
-                        tw.WriteLine($"{fileList[m]};{X_};{Y_}");
+                        tw.WriteLine($"{fileList[m]};{X_};{Y_};{AllContourPointfs.Length}");
                     }
 
                     #endregion
 
-                    Console.WriteLine("{0} {1}", fileList[m], (resuList[m] == 0) ? "false" : "true");
+                    Console.WriteLine("{0} -> {1} {2}", fileList[m], (resuList[m] == 0) ? "false" : "true", AllContourPointfs.Length);
 
                 }
             }
@@ -176,16 +180,27 @@ namespace CountSlippedWafers
         /// </summary>
         /// <param name="edgeVectors">array of edge points</param>
         /// <returns></returns>
-        private static int EvalVectors(double[,] edgeVectors)
+        private static int EvalVectors(double[,] edgeVectors, PointF[] AllContourPointfs)
         {
             int counterHoriz = 0;
             int counterVertical = 0;
             int savedVertical = 0;
             double chamferCounter = 0;
 
+            // breakage condition
+            if (AllContourPointfs.Length < 13000 || AllContourPointfs.Length > 16000)
+                return 0;
+
+
             for (int i = 1; i < edgeVectors.Length/4 - 2; i++)
             {
-                // chamfer region:
+
+                //exclude the horizontal edges:
+                if (AllContourPointfs[i].X > 300 && AllContourPointfs[i].X < 3800)
+                    continue;
+                
+
+                // chamfer region exclusion:
                 if (edgeVectors[i, 2] == 45 || edgeVectors[i, 2] == 135 || edgeVectors[i, 2] == -45 || edgeVectors[i, 2] == -135)
                     chamferCounter++;
                 else
@@ -198,7 +213,7 @@ namespace CountSlippedWafers
                     savedVertical = 0;
                 }
 
-                // horizontal region
+                // horizontal region (after the vertical is found)
                 if (edgeVectors[i, 0] != edgeVectors[i - 1, 0])
                 {
                     counterHoriz = 0;
@@ -216,7 +231,7 @@ namespace CountSlippedWafers
                     counterHoriz = 0;
 
 
-                // vertical region:
+                // vertical region, first check:
                 if (edgeVectors[i, 1] != edgeVectors[i - 1, 1])
                 {
                     counterVertical = 0;
