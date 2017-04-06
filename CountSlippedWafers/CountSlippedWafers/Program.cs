@@ -10,17 +10,25 @@ using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
 using Emgu.CV.UI;
+using ImViewer.MyUtilities;
 
 namespace CountSlippedWafers
 {
     class Program
     {
         private static MemStorage storage;
-        static int _verticalThreshold = 10;
-        static int _horizontalThreshold = 8;
+        static int _verticalThreshold = 7;
+        static int _horizontalThreshold = 4;
         static int _chamferThreshold = 5;
-        static int _leftEdgeThreshold = 300;
-        static int _rightEdgeThreshold = 3800;
+        static int _leftRoi1 = 0;
+        static int _leftRoi2 = 0;
+        static int _leftRoi3 = 400;
+        static int _leftRoi4 = 4096;
+        static int _rightRoi1 = 3695;
+        static int _rightRoi2 = 0;
+        static int _rightRoi3 = 400;
+        static int _rightRoi4 = 4096;
+        private static Rectangle _fullROI;
 
 
 
@@ -44,14 +52,33 @@ namespace CountSlippedWafers
 
             double[,] edgeVectors;
 
-            string inputFolder = @"e:\line20 crack";
+            string inputFolder = @"d:\_SW_Projects\CountSlippedWafers_Images";
 
             // define convolution kernels:
-            float[,] k = new float[,]
+            float[,] k2 = new float[2 * _verticalThreshold + 1, 2 * _horizontalThreshold + 1];
+
+            for (int i = 0; i < _verticalThreshold ; i++)
+                for (int j = 0; j < 2*_horizontalThreshold + 1; j++)
+                    k2[i, j] = 1;
+
+
+            for (int i = 0; i < _verticalThreshold; i++)
+                for (int j = 0; j < 2 * _horizontalThreshold +1; j++)
+                    k2[i + _verticalThreshold + 1, j] = -1;
+
+            ConvolutionKernelF kernel2 = new ConvolutionKernelF(k2);
+
+
+            //define convolution result images:
+            Image<Gray, float> image1_left1 = new Image<Gray, float>(_leftRoi3, _leftRoi4);
+            Image<Gray, float> image1_right1 = new Image<Gray, float>(_rightRoi3, _rightRoi4);
+
+            _fullROI = new Rectangle(0, 0, 4096, 4096);
 
             #endregion
 
-            #region output file handling:
+
+            #region output csv file handling:
 
             string[] fileList = Directory.GetFiles(inputFolder);
             int[] resuList = new int[fileList.Length];
@@ -76,6 +103,7 @@ namespace CountSlippedWafers
                     
                     inputArray = File.ReadAllBytes(fileList[m]);
                     AllContourPointfs = null;
+                    image1.ROI = _fullROI;
 
                     for (int j = 0; j < height / 2; j++)
                     {
@@ -123,6 +151,26 @@ namespace CountSlippedWafers
                         //counter++;
                     }
 
+                    //ImageViewer.Show(image1, "Image1");
+
+                    #region image convolution
+
+                    image1.ROI = new Rectangle(_leftRoi1, _leftRoi2,_leftRoi3, _leftRoi4);
+                    image1_left1 = image1.Convolution(kernel2);
+
+                    
+                    image1.ROI = new Rectangle(_rightRoi1, _rightRoi2, _rightRoi3, _rightRoi4);
+                    image1_right1 = image1.Convolution(kernel2);
+
+
+                    //ImageIO.SaveFITS(image1_left1.Convert<Gray, double>(), Path.GetFileNameWithoutExtension(fileList[m]) + "_left2.fits");
+
+                    //image1.ROI = new Rectangle(_leftRoi1, _leftRoi2, _leftRoi3, _leftRoi4);
+                    //ImageIO.SaveFITS(image1.Convert<Gray, double>(), Path.GetFileNameWithoutExtension(fileList[m]) + "_contour.fits");
+
+                    #endregion
+
+
                     edgeVectors = new double[AllContourPointfs.Length - 1, 4];
 
                     for (int i = 1; i < AllContourPointfs.Length - 2; i++)
@@ -139,12 +187,10 @@ namespace CountSlippedWafers
                     //        tw.WriteLine($"{AllContourPointfs[i].X};{AllContourPointfs[i].Y};{edgeVectors[i, 0]};{edgeVectors[i, 1]};{edgeVectors[i, 2]};{edgeVectors[i, 3]}");
                     //}
 
-                    
-                    resuList[m] = EvalVectors(edgeVectors, AllContourPointfs);
+                    resuList[m] = EvalVectors(edgeVectors, AllContourPointfs, image1_left1, image1_right1);
 
                     #endregion
 
-                    //ImageViewer.Show(image1, "Image1");
 
                     #region save result to file:
                     float X_;
@@ -158,7 +204,6 @@ namespace CountSlippedWafers
                         {
                             X_ = AllContourPointfs[resuList[m]].X;
                             Y_ = AllContourPointfs[resuList[m]].Y;
-
                         }
 
                         tw.WriteLine($"{fileList[m]};{X_};{Y_};{AllContourPointfs.Length}");
@@ -167,7 +212,6 @@ namespace CountSlippedWafers
                     #endregion
 
                     Console.WriteLine("{0} -> {1} {2}", fileList[m], (resuList[m] == 0) ? "false" : "true", AllContourPointfs.Length);
-
                 }
             }
 
@@ -183,7 +227,7 @@ namespace CountSlippedWafers
         /// </summary>
         /// <param name="edgeVectors">array of edge points</param>
         /// <returns></returns>
-        private static int EvalVectors(double[,] edgeVectors, PointF[] AllContourPointfs)
+        private static int EvalVectors(double[,] edgeVectors, PointF[] AllContourPointfs, Image<Gray,float> image1_left, Image<Gray, float> image1_right)
         {
             int counterHoriz = 0;
             int counterVertical = 0;
@@ -191,17 +235,24 @@ namespace CountSlippedWafers
             double chamferCounter = 0;
 
             // breakage condition
-            if (AllContourPointfs.Length < 13000 || AllContourPointfs.Length > 16000)
+            if (AllContourPointfs.Length < 12000 || AllContourPointfs.Length > 19000)
                 return 0;
+
+            float convolutionvalue = 0;
 
 
             for (int i = 1; i < edgeVectors.Length/4 - 2; i++)
             {
-
                 //exclude the horizontal edges:
                 if (AllContourPointfs[i].X > 300 && AllContourPointfs[i].X < 3800)
                     continue;
-                
+
+                if (AllContourPointfs[i].X < 300)
+                    convolutionvalue = image1_left.Data[(int)(AllContourPointfs[i].Y), (int)(AllContourPointfs[i].X), 0];
+
+                if (AllContourPointfs[i].X > 3800)
+                    convolutionvalue = image1_right.Data[(int)(AllContourPointfs[i].Y), (int)(AllContourPointfs[i].X - _rightRoi1), 0];
+
 
                 // chamfer region exclusion:
                 if (edgeVectors[i, 2] == 45 || edgeVectors[i, 2] == 135 || edgeVectors[i, 2] == -45 || edgeVectors[i, 2] == -135)
@@ -246,7 +297,8 @@ namespace CountSlippedWafers
                 }
 
                 if (savedVertical >= _verticalThreshold && counterHoriz >= _horizontalThreshold)
-                    return i;
+                    if (convolutionvalue < -4000 || convolutionvalue > 4000)
+                        return i;
             }
 
             return 0;       // 0 is the "not found", because the result cannot be 0
