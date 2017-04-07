@@ -52,7 +52,7 @@ namespace CountSlippedWafers
 
             double[,] edgeVectors;
 
-            string inputFolder = @"d:\_SW_Projects\CountSlippedWafers_Images";
+            string inputFolder = @"f:\line23 crack";
 
             // define convolution kernels:
             float[,] k2 = new float[2 * _verticalThreshold + 1, 2 * _horizontalThreshold + 1];
@@ -128,7 +128,7 @@ namespace CountSlippedWafers
                     #region image processing:
 
                     //int counter = 0;
-                    WaferMask = image1.ThresholdBinary(new Gray(30), new Gray(255)).Convert<Gray, byte>();
+                    WaferMask = image1.ThresholdBinary(new Gray(20), new Gray(255)).Convert<Gray, byte>();
 
                     for (Contour<Point> contours = WaferMask.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_NONE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_CCOMP, storage); contours != null; contours = contours.HNext)
                     {
@@ -158,14 +158,15 @@ namespace CountSlippedWafers
                     image1.ROI = new Rectangle(_leftRoi1, _leftRoi2,_leftRoi3, _leftRoi4);
                     image1_left1 = image1.Convolution(kernel2);
 
-                    
+                    //ImageIO.SaveFITS(image1_left1.Convert<Gray, double>(), Path.GetFileNameWithoutExtension(fileList[m]) + "_left.fits");
+
                     image1.ROI = new Rectangle(_rightRoi1, _rightRoi2, _rightRoi3, _rightRoi4);
                     image1_right1 = image1.Convolution(kernel2);
 
 
-                    //ImageIO.SaveFITS(image1_left1.Convert<Gray, double>(), Path.GetFileNameWithoutExtension(fileList[m]) + "_left2.fits");
+                    //ImageIO.SaveFITS(image1_right1.Convert<Gray, double>(), Path.GetFileNameWithoutExtension(fileList[m]) + "_right.fits");
 
-                    //image1.ROI = new Rectangle(_leftRoi1, _leftRoi2, _leftRoi3, _leftRoi4);
+                    image1.ROI = _fullROI;
                     //ImageIO.SaveFITS(image1.Convert<Gray, double>(), Path.GetFileNameWithoutExtension(fileList[m]) + "_contour.fits");
 
                     #endregion
@@ -291,7 +292,7 @@ namespace CountSlippedWafers
                     counterVertical = 0;
                 }
 
-                if ((edgeVectors[i, 1] == 1 || edgeVectors[i, 1] == -1) )
+                if ((edgeVectors[i, 1] == 1 || edgeVectors[i, 1] == -1) && (edgeVectors[i, 2] != 45 && edgeVectors[i, 2] != 135 && edgeVectors[i, 2] != -45 && edgeVectors[i, 2] != -135))
                 {
                     counterVertical++;
                 }
