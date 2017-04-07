@@ -88,7 +88,8 @@ namespace CountSlippedWafers
 
             using (TextWriter tw = new StreamWriter("Slippedwafers.csv"))
             {
-                tw.WriteLine("FileName;X;Y");
+                tw.WriteLine(inputFolder);
+                tw.WriteLine("FileName;X;Y;Contur point number;IsSlippedWafer");
             }
 
             #endregion
